@@ -99,6 +99,39 @@ func handlerReset(s *state, cmd command) error {
 	return nil
 }
 
+func handlerUsers(s *state, cmd command) error {
+	currUser := s.config.CurrentUserName
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if user.Name == currUser {
+			fmt.Printf("* %v (current)\n", user.Name)
+		} else {
+			fmt.Printf("* %v\n", user.Name)
+		}
+	}
+
+	return nil
+}
+
+func handlerAgg(s *state, cmd command) error {
+	// if len(cmd.args) == 0 {
+	// 	return errors.New("feed url is required")
+	// }
+
+	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return fmt.Errorf("unable to fetch feed: %v", err)
+	}
+
+	fmt.Printf("%v\n", feed)
+
+	return nil
+}
+
 func main() {
 	cfg, err := config.Read()
 	if err != nil {
@@ -124,6 +157,8 @@ func main() {
 
 	cmds.register("login", handlerLogin)
 	cmds.register("register", handlerRegister)
+	cmds.register("users", handlerUsers)
+	cmds.register("agg", handlerAgg)
 	cmds.register("reset", handlerReset)
 
 	args := os.Args
