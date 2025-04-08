@@ -132,14 +132,9 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.args) <= 1 {
 		return errors.New("name and url is required")
-	}
-
-	user, err := s.db.GetUser(context.Background(), s.config.CurrentUserName)
-	if err != nil {
-		return err
 	}
 
 	feedParams := database.CreateFeedParams{
@@ -156,7 +151,20 @@ func handlerAddFeed(s *state, cmd command) error {
 		return fmt.Errorf("unable to add feed: %v", err)
 	}
 
-	fmt.Printf("%v\n", feed)
+	followParams := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	_, err = s.db.CreateFeedFollow(context.Background(), followParams)
+	if err != nil {
+		return fmt.Errorf("unable to follow new feed: %v", err)
+	}
+
+	fmt.Printf("added new feed: %v\n", feed.Name)
 
 	return nil
 }
@@ -168,6 +176,47 @@ func handlerGetFeeds(s *state, cmd command) error {
 	}
 
 	fmt.Printf("%v\n", feeds)
+
+	return nil
+}
+
+func handlerFollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) == 0 {
+		return errors.New("url arg is required")
+	}
+
+	feed, err := s.db.GetFeedByUrl(context.Background(), cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("unable to find existing feed for url %v", cmd.args[0])
+	}
+
+	params := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	newFollow, err := s.db.CreateFeedFollow(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("unable to create follow: %v", err)
+	}
+
+	fmt.Printf("Username: %v is now following rss feed: %v\n", newFollow.UserName, newFollow.FeedName)
+
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command) error {
+	feeds, err := s.db.GetFeedFollowsForUser(context.Background(), s.config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("unable to find any feeds being followed for user: %v", s.config.CurrentUserName)
+	}
+
+	for _, feed := range feeds {
+		fmt.Printf("- %v\n", feed.FeedName)
+	}
 
 	return nil
 }
@@ -199,8 +248,10 @@ func main() {
 	cmds.register("register", handlerRegister)
 	cmds.register("users", handlerUsers)
 	cmds.register("agg", handlerAgg)
-	cmds.register("addfeed", handlerAddFeed)
+	cmds.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	cmds.register("feeds", handlerGetFeeds)
+	cmds.register("follow", middlewareLoggedIn(handlerFollow))
+	cmds.register("following", handlerFollowing)
 	cmds.register("reset", handlerReset)
 
 	args := os.Args
